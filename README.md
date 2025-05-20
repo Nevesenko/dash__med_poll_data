@@ -85,8 +85,6 @@ def after_load_virtual(df, spark, app, *args, **kwargs):
 1. На первом этапе строка данных, приянятая из источника, была распарсена. 
 
 ```sql
-ntrcn
-```
 with data as (
     select split(fio, ';') as parts
     from child
@@ -114,10 +112,10 @@ to_timestamp(parts[27], 'dd.MM.yyyy H:mm:ss') submitted_date,
 parts[28] token
 from data
 ```
-</details>
+
 
 2. Далее был разворот 5 вопросов, где каждому препарату начислялись отдельные баллы. Я развернула таблицу, создала единую категорию для такого типа вопросов.
-<details><summary>Код</summary>
+
 ```sql
 SELECT 
     *
