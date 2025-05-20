@@ -12,7 +12,9 @@
 ### Подключение источника
 Источник был облачным файлом на гугл-диске, оттуда данные парсились c использованием python-кода. Полученные данные сохранялись в промежуточную таблицу "Опрос (raw)".
 <details><summary>Код</summary>
-```
+
+```python
+
 import requests
 import re
 from pyspark.sql import Row
@@ -73,7 +75,127 @@ def after_load_virtual(df, spark, app, *args, **kwargs):
 
     return df
 ```
-
-
 </details>
 
+
+### Трансформирование данных
+1. На первом этапе строка данных, приянятая из источника, была распарсена. 
+<details><summary>Код</summary>
+```sql
+with data as (
+    select split(fio, ';') as parts
+    from child
+) 
+select 
+parts[0] fio,
+parts[2] scenario,
+trim(both '"' from parts[7]) known_meds,
+trim(both '"' from parts[8]) priorities,
+parts[9] c1,
+parts[11] c2,
+parts[13] c3,
+parts[15] c4,
+parts[17] c5,
+trim(both '"' from parts[18]) terapy_knoledge,
+trim(both '"' from parts[19]) professionalism,
+trim(both '"' from parts[20]) attention,
+trim(both '"' from parts[21]) atitude_to_cooperation,
+trim(both '"' from parts[22]) efficiency_interaction,
+parts[23] responder_id,
+parts[24] mp,
+parts[25] phone_number,
+parts[26] pin_interviewer,
+to_timestamp(parts[27], 'dd.MM.yyyy H:mm:ss') submitted_date,
+parts[28] token
+from data
+```
+</details>
+
+2. Далее был разворот 5 вопросов, где каждому препарату начислялись отдельные баллы. Я развернула таблицу, создала единую категорию для такого типа вопросов.
+```sql
+SELECT 
+    *
+FROM child
+LATERAL VIEW STACK(
+    7, -- количество столбцов для преобразования в строки
+    'Препарат 1', c1,
+    'Препарат 2', c2,
+    'Препарат 3', c3,
+    'Препарат 4', c4,
+    'Препарат 0' , c5,
+    'Other', null,
+    'Ни один из предложенных', null
+) AS Category, Score
+```
+3.  Далее стояла задача разобрать вопрос, где ответом была строка -- последовательность препаратов. При этом порядковый номер препарата определял его приоритет. 
+<details><summary>Код</summary>
+```sql
+SELECT * 
+from (
+    SELECT 
+    *,
+    posexplode(split(priorities, ', ')) AS (split_index, split_item)
+    FROM child
+)
+WHERE split_item = category
+or (category not in  ('Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' )
+and split_index = 0)
+```
+</details>
+
+4. Финальным этапом ETL было
+<details><summary>Код</summary>
+```sql
+select 
+case when category in  ('Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' , 'Ни один из предложенных' )
+then category else null end as meds,
+category as meds_all,
+case when score != '' then 'Был опыт взаимодействия'
+when category in ('Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' )
+then 'Не было опыта взаимодействия' else null end experince_with_meds,
+fio,
+scenario,
+responder_id,
+mp,
+phone_number,
+pin_interviewer,
+cast(submitted_date as timestamp),
+token,
+CAST(split_index AS int) + 1 as priority_index,
+CAST(score as int) as expertise_level,
+
+case when array_contains( split(attention, ', '), category) then 1 else 0 end attention_rate,
+case when array_contains( split(terapy_knoledge, ', '), category) then 1 else 0 end terapy_knoledge_rate,
+case when array_contains( split(professionalism, ', '), category) then 1 else 0 end professionalism_rate,
+case when array_contains( split(atitude_to_cooperation, ', '), category) then 1 else 0 end atitude_to_cooperation_rate,
+case when array_contains( split(efficiency_interaction, ', '), category) then 1
+when  size(array_except( split(efficiency_interaction, ', ') , array(
+    'Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' , 'Препарат 5', 'Препарат 6')') )) > 0  and category = 'Other' then 1 
+else 0 end efficiency_interaction_rate,
+split(known_meds, ', ') t1,
+category t2,
+array_contains(array_except( split(known_meds, ', ') , array(
+    'Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' ,
+    'Ферлатум', 
+    'Мальтофер',
+    'Феринжект',
+    'Тардиферон',
+    'Фенюльс',
+    'Вожея', 
+    'Сидерал Форте', 
+    'Сидерал', 
+    'ВитаФерр', 
+    'Ферро-Фольгамма', 
+    'Венофер', 
+    'Солгар Джентал Айрон', 
+    'Ликферр', 
+    'Ферроплекс',
+    'Актиферрин') ) , category) t3, 
+case when array_contains(split(known_meds, ', '), category) then 1
+    when  size(array_except( split(known_meds, ', ') , array(
+   'Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' , 'Препарат 5', 'Препарат 6') )) > 0  and category = 'Other' then 1 
+    else 0 end known_meds_rate
+
+from child 
+```
+</details>
