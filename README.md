@@ -28,7 +28,7 @@ from pyspark.sql.types import StructType, StructField, StringType
 
 def after_load_virtual(df, spark, app, *args, **kwargs):
     # Переменная содержит ссылку на книгу, # данные которой необходимо использовать
-    sheet_link = 'https://docs.google.com/spreadsheets/d/1_HFNxtpC07OQ2E3bVpVlrzMjS1MksKgtApa0YpsEquk/edit?gid=1033252738#gid=1033252738'
+    sheet_link = 'ссылка'
 
     # В ссылке содержатся идентификатор книги и листа.# Забираем их с помощью регулярных выражений.
     sheet_id = re.findall('/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_link)[0]
