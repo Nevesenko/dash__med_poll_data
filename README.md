@@ -82,6 +82,8 @@ def after_load_virtual(df, spark, app, *args, **kwargs):
 1. На первом этапе строка данных, приянятая из источника, была распарсена. 
 <details><summary>Код</summary>
 ```sql
+ntrcn
+```
 with data as (
     select split(fio, ';') as parts
     from child
@@ -112,6 +114,7 @@ from data
 </details>
 
 2. Далее был разворот 5 вопросов, где каждому препарату начислялись отдельные баллы. Я развернула таблицу, создала единую категорию для такого типа вопросов.
+3. <details><summary>Код</summary>
 ```sql
 SELECT 
     *
@@ -127,7 +130,10 @@ LATERAL VIEW STACK(
     'Ни один из предложенных', null
 ) AS Category, Score
 ```
+</details>
 3.  Далее стояла задача разобрать вопрос, где ответом была строка -- последовательность препаратов. При этом порядковый номер препарата определял его приоритет. 
+
+
 <details><summary>Код</summary>
 ```sql
 SELECT * 
@@ -144,7 +150,7 @@ and split_index = 0)
 </details>
 
 4. Финальным этапом ETL было
-<details><summary>Код</summary>
+
 ```sql
 select 
 case when category in  ('Препарат 0',  'Препарат 1', 'Препарат 2', 'Препарат 3', 'Препарат 4' , 'Ни один из предложенных' )
@@ -198,4 +204,5 @@ case when array_contains(split(known_meds, ', '), category) then 1
 
 from child 
 ```
-</details>
+
+
